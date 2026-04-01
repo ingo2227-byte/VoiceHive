@@ -1,0 +1,88 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../src/generated/prisma"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hives         Hive[]
+  notes         HiveNote[]
+  inspections   Inspection[]
+  voiceCaptures VoiceCapture[]
+}
+
+model Hive {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes         HiveNote[]
+  inspections   Inspection[]
+  voiceCaptures VoiceCapture[]
+
+  @@index([ownerId])
+}
+
+model HiveNote {
+  id        String   @id @default(cuid())
+  ownerId   String
+  hiveId    String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  hive      Hive     @relation(fields: [hiveId], references: [id], onDelete: Cascade)
+  text      String
+  source    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([hiveId])
+}
+
+model Inspection {
+  id          String   @id @default(cuid())
+  ownerId     String
+  hiveId      String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  hive        Hive     @relation(fields: [hiveId], references: [id], onDelete: Cascade)
+  inspectedAt DateTime
+  broodFrames Int?
+  honeyFrames Int?
+  temperament String?
+  queenSeen   Boolean?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([hiveId])
+}
+
+model VoiceCapture {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  hiveId     String?
+  hive       Hive?    @relation(fields: [hiveId], references: [id], onDelete: SetNull)
+  rawText    String
+  parsedJson Json?
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([hiveId])
+}

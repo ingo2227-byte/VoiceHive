@@ -125,6 +125,7 @@ export default function Home() {
     useOfflineSync();
 
   const totalHives = hives.length;
+
   const latestInspectionDate = useMemo(() => {
     const latest = hives
       .map((hive) => hive.latestInspection?.inspectedAt)
@@ -159,7 +160,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    loadHives();
+    void loadHives();
   }, []);
 
   function buildPayload(): HiveInput {
@@ -183,9 +184,13 @@ export default function Home() {
       location: parsed.location ?? prev.location,
       inspectedAt: parsed.inspectedAt ?? prev.inspectedAt,
       broodFrames:
-        parsed.broodFrames !== undefined ? String(parsed.broodFrames) : prev.broodFrames,
+        parsed.broodFrames !== undefined
+          ? String(parsed.broodFrames)
+          : prev.broodFrames,
       honeyFrames:
-        parsed.honeyFrames !== undefined ? String(parsed.honeyFrames) : prev.honeyFrames,
+        parsed.honeyFrames !== undefined
+          ? String(parsed.honeyFrames)
+          : prev.honeyFrames,
       queenSeen:
         parsed.queenSeen === undefined
           ? prev.queenSeen
@@ -220,34 +225,17 @@ export default function Home() {
     const parsed = parseVoiceText(voiceText);
     applyVoicePreview(parsed);
     pushToast("Sprachtext analysiert. Prüfe den Vorschlag unten.", "success");
-
-    if (!navigator.onLine) {
-      addPendingAction({
-        id: createActionId(),
-        type: "create",
-        payload: {
-          name: parsed.name || "Neues Volk",
-          location: parsed.location || undefined,
-          inspectedAt: parsed.inspectedAt || new Date().toISOString(),
-          broodFrames: parsed.broodFrames,
-          honeyFrames: parsed.honeyFrames,
-          queenSeen: parsed.queenSeen,
-          temperament: parsed.temperament,
-          notes: parsed.notes || voiceText,
-        },
-        createdAt: Date.now(),
-      });
-
-      refreshPendingCount();
-      pushToast("Offline gespeichert. Wird später synchronisiert.", "info");
-    }
   }
 
   function startMic() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const Recognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!Recognition) {
-      pushToast("Spracherkennung wird in diesem Browser nicht unterstützt.", "error");
+      pushToast(
+        "Spracherkennung wird in diesem Browser nicht unterstützt.",
+        "error"
+      );
       return;
     }
 
@@ -257,8 +245,8 @@ export default function Home() {
     recognition.maxAlternatives = 1;
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event: SpeechRecognitionEventLike) => {
-  setVoiceText(event.results[0][0].transcript);
-};
+      setVoiceText(event.results[0][0].transcript);
+    };
     recognition.onerror = () => {
       setIsListening(false);
       pushToast("Spracherkennung fehlgeschlagen.", "error");
@@ -296,6 +284,7 @@ export default function Home() {
       );
 
       const data = await res.json();
+
       if (!res.ok) {
         throw new Error(data.error || "Speichern fehlgeschlagen.");
       }
@@ -308,33 +297,35 @@ export default function Home() {
       await loadHives();
       refreshPendingCount();
       pushToast("Gespeichert.", "success");
- finally {
+    } catch {
+      if (isEditing) {
+        addPendingAction({
+          id: createActionId(),
+          type: "update",
+          hiveId: form.id,
+          payload,
+          createdAt: Date.now(),
+        });
+      } else {
+        addPendingAction({
+          id: createActionId(),
+          type: "create",
+          payload,
+          createdAt: Date.now(),
+        });
+      }
+
+      setForm(initialForm);
+      setVoiceText("");
+      setPreview(null);
+      setMissingQuestions([]);
+      setIsEditing(false);
+      refreshPendingCount();
+      pushToast("Offline gespeichert. Wird später synchronisiert.", "warning");
+    } finally {
       setIsSaving(false);
     }
-  }} catch {
-  if (isEditing) {
-    addPendingAction({
-      id: createActionId(),
-      type: "update",
-      hiveId: form.id,
-      payload,
-      createdAt: Date.now(),
-    });
-  } else {
-    addPendingAction({
-      id: createActionId(),
-      type: "create",
-      payload,
-      createdAt: Date.now(),
-    });
   }
-
-  setForm(initialForm);
-  setVoiceText("");
-  setIsEditing(false);
-  refreshPendingCount();
-  pushToast("Offline gespeichert. Wird später synchronisiert.", "warning");
-}
 
   function editHive(hive: HiveListItem) {
     const latest = hive.latestInspection;
@@ -347,12 +338,18 @@ export default function Home() {
       broodFrames: latest?.broodFrames?.toString() ?? "",
       honeyFrames: latest?.honeyFrames?.toString() ?? "",
       queenSeen:
-        latest?.queenSeen === true ? "yes" : latest?.queenSeen === false ? "no" : "unknown",
+        latest?.queenSeen === true
+          ? "yes"
+          : latest?.queenSeen === false
+          ? "no"
+          : "unknown",
       temperament: latest?.temperament ?? "ruhig",
       notes: latest?.notes ?? "",
     });
 
     setIsEditing(true);
+    setPreview(null);
+    setMissingQuestions([]);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -371,29 +368,12 @@ export default function Home() {
       await loadHives();
       pushToast("Volk gelöscht.", "success");
     } catch {
-  if (isEditing) {
-    addPendingAction({
-      id: createActionId(),
-      type: "update",
-      hiveId: form.id,
-      payload,
-      createdAt: Date.now(),
-    });
-  } else {
-    addPendingAction({
-      id: createActionId(),
-      type: "create",
-      payload,
-      createdAt: Date.now(),
-    });
-  }
-
-  setForm(initialForm);
-  setVoiceText("");
-  setIsEditing(false);
-  refreshPendingCount();
-  pushToast("Offline gespeichert. Wird später synchronisiert.", "warning");
-}
+      addPendingAction({
+        id: createActionId(),
+        type: "delete",
+        hiveId: id,
+        createdAt: Date.now(),
+      });
 
       refreshPendingCount();
       setHives((prev) => prev.filter((item) => item.id !== id));
@@ -408,10 +388,13 @@ export default function Home() {
       <section style={heroStyle}>
         <div>
           <p style={eyebrowStyle}>VoiceHive</p>
-          <h1 style={titleStyle}>Digitale Stockkarte mit Spracheingabe und Offline-Sync</h1>
+          <h1 style={titleStyle}>
+            Digitale Stockkarte mit Spracheingabe und Offline-Sync
+          </h1>
           <p style={subtitleStyle}>
             Erfasse Durchsichten schneller, halte Völker sauber dokumentiert und
-            synchronisiere Änderungen automatisch, sobald wieder Verbindung besteht.
+            synchronisiere Änderungen automatisch, sobald wieder Verbindung
+            besteht.
           </p>
         </div>
 
@@ -478,7 +461,11 @@ export default function Home() {
             <button type="button" onClick={stopMic} style={secondaryButtonStyle}>
               Stoppen
             </button>
-            <button type="button" onClick={handleVoiceEvaluation} style={secondaryButtonStyle}>
+            <button
+              type="button"
+              onClick={handleVoiceEvaluation}
+              style={secondaryButtonStyle}
+            >
               Vorschlag erzeugen
             </button>
           </div>
@@ -487,17 +474,34 @@ export default function Home() {
             <div style={previewCardStyle}>
               <h3 style={{ marginTop: 0 }}>Parser-Vorschlag</h3>
               <div style={previewGridStyle}>
-                <div><strong>Volk:</strong> {preview.name || "—"}</div>
-                <div><strong>Standort:</strong> {preview.location || "—"}</div>
-                <div><strong>Datum:</strong> {preview.inspectedAt || "—"}</div>
-                <div><strong>Brutwaben:</strong> {preview.broodFrames ?? "—"}</div>
-                <div><strong>Honigwaben:</strong> {preview.honeyFrames ?? "—"}</div>
+                <div>
+                  <strong>Volk:</strong> {preview.name || "—"}
+                </div>
+                <div>
+                  <strong>Standort:</strong> {preview.location || "—"}
+                </div>
+                <div>
+                  <strong>Datum:</strong> {preview.inspectedAt || "—"}
+                </div>
+                <div>
+                  <strong>Brutwaben:</strong> {preview.broodFrames ?? "—"}
+                </div>
+                <div>
+                  <strong>Honigwaben:</strong> {preview.honeyFrames ?? "—"}
+                </div>
                 <div>
                   <strong>Königin:</strong>{" "}
-                  {preview.queenSeen === true ? "gesehen" : preview.queenSeen === false ? "nicht gesehen" : "—"}
+                  {preview.queenSeen === true
+                    ? "gesehen"
+                    : preview.queenSeen === false
+                    ? "nicht gesehen"
+                    : "—"}
                 </div>
-                <div><strong>Verhalten:</strong> {preview.temperament || "—"}</div>
+                <div>
+                  <strong>Verhalten:</strong> {preview.temperament || "—"}
+                </div>
               </div>
+
               {missingQuestions.length > 0 ? (
                 <div style={questionBoxStyle}>
                   <strong>Es fehlen noch Angaben:</strong>
@@ -513,7 +517,9 @@ export default function Home() {
         </div>
 
         <div style={panelStyle}>
-          <h2 style={panelTitleStyle}>{isEditing ? "Durchsicht ergänzen" : "Neue Durchsicht"}</h2>
+          <h2 style={panelTitleStyle}>
+            {isEditing ? "Durchsicht ergänzen" : "Neues Volk / neue Durchsicht"}
+          </h2>
 
           <form onSubmit={save} style={formStyle}>
             <div style={twoColStyle}>
@@ -521,13 +527,17 @@ export default function Home() {
                 style={inputStyle}
                 placeholder="Volkname"
                 value={form.name}
-                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, name: e.target.value }))
+                }
               />
               <input
                 style={inputStyle}
                 placeholder="Standort"
                 value={form.location}
-                onChange={(e) => setForm((prev) => ({ ...prev, location: e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, location: e.target.value }))
+                }
               />
             </div>
 
@@ -535,7 +545,9 @@ export default function Home() {
               type="date"
               style={inputStyle}
               value={form.inspectedAt}
-              onChange={(e) => setForm((prev) => ({ ...prev, inspectedAt: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, inspectedAt: e.target.value }))
+              }
             />
 
             <div style={twoColStyle}>
@@ -543,13 +555,17 @@ export default function Home() {
                 style={inputStyle}
                 placeholder="Brutwaben"
                 value={form.broodFrames}
-                onChange={(e) => setForm((prev) => ({ ...prev, broodFrames: e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, broodFrames: e.target.value }))
+                }
               />
               <input
                 style={inputStyle}
                 placeholder="Honigwaben"
                 value={form.honeyFrames}
-                onChange={(e) => setForm((prev) => ({ ...prev, honeyFrames: e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, honeyFrames: e.target.value }))
+                }
               />
             </div>
 
@@ -571,7 +587,9 @@ export default function Home() {
             <select
               style={inputStyle}
               value={form.temperament}
-              onChange={(e) => setForm((prev) => ({ ...prev, temperament: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, temperament: e.target.value }))
+              }
             >
               <option value="ruhig">ruhig</option>
               <option value="leicht nervös">leicht nervös</option>
@@ -583,12 +601,18 @@ export default function Home() {
               style={textareaSmallStyle}
               placeholder="Notiz zur Durchsicht"
               value={form.notes}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, notes: e.target.value }))
+              }
             />
 
             <div style={buttonRowStyle}>
               <button type="submit" style={primaryButtonStyle} disabled={isSaving}>
-                {isSaving ? "Speichert..." : isEditing ? "Durchsicht speichern" : "Volk anlegen"}
+                {isSaving
+                  ? "Speichert..."
+                  : isEditing
+                  ? "Durchsicht speichern"
+                  : "Volk anlegen"}
               </button>
 
               {isEditing ? (
@@ -621,7 +645,9 @@ export default function Home() {
         ) : hives.length === 0 ? (
           <div style={emptyStateStyle}>
             <strong>🐝 Noch keine Völker vorhanden</strong>
-            <p style={{ margin: 0 }}>Lege dein erstes Volk an oder nutze die Spracheingabe.</p>
+            <p style={{ margin: 0 }}>
+              Lege dein erstes Volk an oder nutze die Spracheingabe.
+            </p>
           </div>
         ) : (
           <div style={listStyle}>
@@ -649,13 +675,21 @@ export default function Home() {
                 </div>
 
                 <div style={buttonRowStyle}>
-                  <button type="button" style={secondaryButtonStyle} onClick={() => editHive(hive)}>
+                  <button
+                    type="button"
+                    style={secondaryButtonStyle}
+                    onClick={() => editHive(hive)}
+                  >
                     Bearbeiten
                   </button>
                   <a href={`/volk/${hive.id}`} style={linkButtonStyle}>
                     Verlauf
                   </a>
-                  <button type="button" style={dangerButtonStyle} onClick={() => deleteHive(hive.id)}>
+                  <button
+                    type="button"
+                    style={dangerButtonStyle}
+                    onClick={() => deleteHive(hive.id)}
+                  >
                     Löschen
                   </button>
                 </div>
